@@ -1,0 +1,299 @@
+import 'package:baseerpmobile/config/text_styles.dart';
+import 'package:baseerpmobile/controler/blocs/brunch_list_bloc/brunchlist_state.dart';
+import 'package:baseerpmobile/controler/providers/companylist_provider.dart';
+import 'package:baseerpmobile/pages/company_pages/account_page.dart';
+import 'package:baseerpmobile/pages/company_pages/crm_page.dart';
+import 'package:baseerpmobile/pages/company_pages/my_attendance.dart';
+import 'package:baseerpmobile/pages/company_pages/purchage_page.dart';
+import 'package:baseerpmobile/pages/company_pages/sales_page.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
+import '../../config/shared_preference_helper.dart';
+import '../../config/strings.dart';
+import '../../config/user_shared_preference.dart';
+import '../../controler/blocs/brunch_list_bloc/branchlist_evnt.dart';
+import '../../controler/blocs/brunch_list_bloc/brunchlist_bloc.dart';
+import '../../controler/providers/companylist_provider.dart';
+import '../../data/data_model/brunchlist_model.dart';
+import '../../router/route_name.dart';
+import '../drawer.dart';
+import 'home_page.dart';
+
+/// This page is the branch home page of base erp mobile
+///
+/// user can select branch in this page and data will be shown
+///
+/// branch wise. user will have a tab bar in this page
+///
+/// tab bar will be dynamic in this section
+
+List<String> branch_list = <String>[
+  'Akhter Furnitures Ltd',
+  'Hatil Furnitures Ltd',
+  'Brother & Company',
+  'Tilottoma Bangla',
+];
+
+final _pages = [
+  const HomePage(),
+  const AccountPage(),
+  const SalesPage(),
+  const PurchasePage(),
+  const CRMPage(),
+  const MyAttendance(),
+];
+
+
+
+class CompanyHomePage extends StatefulWidget {
+  const CompanyHomePage({
+    Key? key,
+  }) : super(key: key);
+  @override
+  State<CompanyHomePage> createState() => _CompanyHomePageState();
+}
+
+class _CompanyHomePageState extends State<CompanyHomePage> {
+  final GlobalKey<ScaffoldState> _scaffoldkey = GlobalKey<ScaffoldState>();
+ // var dropDownValue = list.first;
+
+  String _token = '', _userId = '';
+  late final BrunchListBloc _brunchListBloc;
+
+  /// This function is used for getting [userId] and [token]
+  /// [usedId] and [token] saved to local machine when login
+  /// here we retrieve these data from local machine
+  getUserToken() async {
+    var token = await UserSharedPreference.getValue(
+      SharedPreferenceHelper.token,
+    );
+    var userId = await UserSharedPreference.getValue(
+      SharedPreferenceHelper.userIdentity,
+    );
+
+    _token = token ?? '';
+    _userId = userId ?? '';
+
+    _brunchListBloc.add(GetBrunchList(token: _token, userId: _userId));
+  }
+
+  @override
+  void initState() {
+    _brunchListBloc = context.read<BrunchListBloc>();
+    getUserToken();
+    super.initState();
+  }
+  String? dropDownValue;
+
+  SizedBox branchDropdown(BranchData data){
+    List item= [];
+    item.add(data.branchName);
+    if (kDebugMode) {
+      print(item);
+    }
+    return SizedBox(
+      width: 150.w,
+      child: DropdownButton<dynamic>(
+        value: dropDownValue,
+        dropdownColor: Colors.black,
+        elevation: 0,
+        icon: Padding(
+          padding: EdgeInsets.only(top: 2.h),
+          child: Padding(
+            padding: EdgeInsets.only(left: 34.w),
+            child: Text(
+              'Select Branch',
+              style: CustomTextStyles.regularText(
+                12.sp,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ),
+        style: CustomTextStyles.mediumText(15.sp, color: Colors.white),
+        underline: const SizedBox(),
+        onChanged: ( value) {
+          //====== This is called when the user selects an item ========
+          //------------------------------------------------------------
+          setState(() {
+            dropDownValue = value;
+          });
+        },
+        items: item.map((dynamic value) {
+          return DropdownMenuItem<dynamic>(
+            value: value.branchName.toString(),
+            child: Text(
+              value.branchName,
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    var companyProvider = Provider.of<CompanyProvider>(context, listen: true);
+
+    return Scaffold(
+      key: _scaffoldkey,
+      drawer: const Drawer(
+        elevation: 0,
+        child: BranchDrawer(),
+      ),
+      appBar: PreferredSize(
+        preferredSize: Size.fromHeight(40.h),
+        child: AppBar(
+          elevation: 0,
+          centerTitle: true,
+          leading: InkWell(
+            onTap: () {
+              _scaffoldkey.currentState?.openDrawer();
+            },
+            child: const Icon(Icons.menu),
+          ),
+          actions: [
+            BlocConsumer<BrunchListBloc, BrunchListState>(
+                builder: (context, state) {
+                  if (state is BrunchListLoading) {
+                    return Center(
+                        child: CircularProgressIndicator.adaptive(
+                          strokeWidth: 2.sp,
+                        ));
+                  }
+                  if (state is BrunchListLoaded) {
+                    List data;
+                    data=state.brunchListModel.data!.toList();
+                    print("print my data$data");
+                    return ListView.builder(itemBuilder: (context,index){
+                      return branchDropdown(state.brunchListModel.data![index]);
+                    });
+                  }
+                  if (state is BrunchListFailure) {
+                    WidgetsBinding.instance.addPostFrameCallback(
+                          (_) {
+                        if (state.brunchListModel.message
+                            .split(' ')
+                            .last
+                            .substring(1, 4) ==
+                            '401') {
+                          context.goNamed(RouteNames.loginPage);
+                        }
+                      },
+                    );
+                    return Center(
+                      child: Text(state.brunchListModel.message),
+                    );
+                  }
+                  return Container();
+                }, listener: (context, state) {
+              if (state is BrunchListConnectionError) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(AllString.noInternet),
+                  ),
+                );
+              }
+            }),
+
+            // DropdownButton<String>(
+            //   value: dropDownValue,
+            //   dropdownColor: Colors.black,
+            //   elevation: 0,
+            //   icon: Padding(
+            //     padding: EdgeInsets.only(top: 2.h),
+            //     child: Padding(
+            //       padding: EdgeInsets.only(left: 34.w),
+            //       child: Text(
+            //         'Select Branch',
+            //         style: CustomTextStyles.regularText(
+            //           12.sp,
+            //           color: Colors.white,
+            //         ),
+            //       ),
+            //     ),
+            //   ),
+            //   style: CustomTextStyles.mediumText(15.sp, color: Colors.white),
+            //   underline: const SizedBox(),
+            //   onChanged: (String? value) {
+            //     //====== This is called when the user selects an item ========
+            //     //------------------------------------------------------------
+            //     setState(() {
+            //       dropDownValue = value!;
+            //     });
+            //   },
+            //   items: branch_list.map<DropdownMenuItem<String>>((String value) {
+            //     return DropdownMenuItem<String>(
+            //       value: value,
+            //       child: Text(
+            //         value,
+            //       ),
+            //     );
+            //   }).toList(),
+            // ),
+            SizedBox(width: 16.w),
+          ],
+          title: const SizedBox(),
+        ),
+      ),
+      body: _pages[companyProvider.currentIndexCompanyHomePage],
+      bottomNavigationBar: Theme(
+        data: Theme.of(context).copyWith(
+          canvasColor: Colors.green,
+          primaryColor: Colors.white,
+          textTheme: Theme.of(context).textTheme.copyWith(
+                caption: CustomTextStyles.semiBoldText(14.sp),
+              ),
+        ),
+        child: BottomNavigationBar(
+          selectedFontSize: 14.sp,
+          selectedLabelStyle: CustomTextStyles.mediumText(12.sp),
+          unselectedItemColor: Colors.black,
+          selectedItemColor: Colors.white,
+          onTap: (index) {
+            companyProvider.setCurrentIndexCompanyHomePage(index);
+          },
+          currentIndex: companyProvider.currentIndexCompanyHomePage,
+
+          /// As the items will be dynamic so
+          /// we have to add pages on a list
+          /// and provide items a list
+          items: const [
+            BottomNavigationBarItem(
+              icon: Icon(Icons.dashboard),
+              label: "Dashboard",
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.account_box_outlined),
+              label: "Accounts",
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.point_of_sale),
+              label: "Sales",
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.published_with_changes_rounded),
+              label: "Purchase",
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.chrome_reader_mode_outlined),
+              label: "CRM",
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.person_add_alt_1),
+              label: "Attendance",
+            ),
+            /*ImageIcon(
+              AssetImage(Images.homeIcon),
+              color: Colors.white,
+            )*/
+          ],
+        ),
+      ),
+    );
+  }
+}
